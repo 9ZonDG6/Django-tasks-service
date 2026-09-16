@@ -81,7 +81,7 @@ JWKS кэшируется в каждом процессе на 5 минут. Т
 | Переменная | Значение по умолчанию / назначение |
 | --- | --- |
 | `AUTH_JWKS_URL` | `http://localhost:8000/.well-known/jwks.json` |
-| `AUTH_JWT_ISSUER` | `django-template-auth`, должен совпадать с `JWT_ISSUER` в auth |
+| `AUTH_JWT_ISSUER` | `django-auth-service`, должен совпадать с `JWT_ISSUER` в auth |
 | `AUTH_JWT_AUDIENCE` | Пустое; ожидаемое назначение токена при включённом audience |
 | `DATABASE_URL` | SQLite локально; для PostgreSQL — `postgres://user:password@host:5432/tasks` |
 | `SECRET_KEY` | Секрет Django; локальный пример не использовать в production |
