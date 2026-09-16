@@ -59,7 +59,7 @@ def token(keys, issuer):
             "user_id": str(uuid4()),
             "token_type": "access",
             "jti": str(uuid4()),
-            "iss": "django-template-auth",
+            "iss": "django-auth-service",
             "iat": int(time.time()),
             "exp": int(time.time()) + 900,
         }
