@@ -4,6 +4,7 @@ server:
 check:
 	uv run ruff check .
 	uv run ruff format --check .
+	uv run ty check apps config
 	uv run pytest
 	uv run python manage.py check
 	uv run python manage.py makemigrations --check --dry-run

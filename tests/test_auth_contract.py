@@ -9,7 +9,7 @@ import jwt
 import pytest
 from rest_framework.test import APIClient
 
-from tasks.authentication import jwks_client
+from apps.tasks.authentication import jwks_client
 
 pytestmark = pytest.mark.django_db
 
@@ -29,13 +29,13 @@ from django.core.management import call_command
 from rest_framework.test import APIClient
 call_command("migrate", verbosity=0)
 client = APIClient()
-registered = client.post("/users/register/", {"username": "contract-user", "password": "Contract-Pass-92!"})
+registered = client.post("/api/v1/users/register/", {"username": "contract-user", "password": "Contract-Pass-92!"})
 assert registered.status_code == 201, registered.data
-login = client.post("/auth/login/", {"username": "contract-user", "password": "Contract-Pass-92!"})
+login = client.post("/api/v1/auth/login/", {"username": "contract-user", "password": "Contract-Pass-92!"})
 assert login.status_code == 200, login.data
-refreshed = client.post("/auth/refresh/", {"refresh": login.data["refresh"]})
+refreshed = client.post("/api/v1/auth/refresh/", {"refresh": login.data["refresh"]})
 assert refreshed.status_code == 200, refreshed.data
-keys = client.get("/auth/jwks.json")
+keys = client.get("/.well-known/jwks.json")
 assert keys.status_code == 200
 print(json.dumps({"tokens": login.data, "refreshed": refreshed.data, "jwks": keys.data}))
 """
@@ -60,15 +60,15 @@ print(json.dumps({"tokens": login.data, "refreshed": refreshed.data, "jwks": key
     )
     contract = json.loads(result.stdout)
     settings.AUTH_JWT_AUDIENCE = "tasks-service"
-    settings.AUTH_JWKS_URL = "http://contract.test/auth/jwks.json"
+    settings.AUTH_JWKS_URL = "http://contract.test/.well-known/jwks.json"
     monkeypatch.setattr(jwt.PyJWKClient, "fetch_data", lambda self: contract["jwks"])
     jwks_client.cache_clear()
     client = APIClient()
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {contract['tokens']['access']}")
-    created = client.post("/api/tasks/", {"title": "Real auth token"})
+    created = client.post("/api/v1/tasks/", {"title": "Real auth token"})
     assert created.status_code == 201
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {contract['refreshed']['access']}")
-    assert client.get("/api/tasks/").data["count"] == 1
+    assert client.get("/api/v1/tasks/").data["count"] == 1
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {contract['refreshed']['refresh']}")
-    assert client.get("/api/tasks/").status_code == 401
+    assert client.get("/api/v1/tasks/").status_code == 401
     jwks_client.cache_clear()

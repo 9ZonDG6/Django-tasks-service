@@ -8,9 +8,10 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.test import override_settings
+from jwt.algorithms import RSAAlgorithm
 from rest_framework.test import APIClient
 
-from tasks.authentication import jwks_client
+from apps.tasks.authentication import jwks_client
 
 pytestmark = pytest.mark.django_db
 
@@ -22,7 +23,7 @@ def keys():
 
 @pytest.fixture
 def issuer(keys, settings):
-    jwk = jwt.algorithms.RSAAlgorithm.to_jwk(keys.public_key(), as_dict=True)
+    jwk = RSAAlgorithm.to_jwk(keys.public_key(), as_dict=True)
     jwk.update(kid="test-key", alg="RS256", use="sig")
     hits = []
 
@@ -35,13 +36,13 @@ def issuer(keys, settings):
             self.end_headers()
             self.wfile.write(body)
 
-        def log_message(self, *_args):
+        def log_message(self, format: str, *args: object) -> None:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    settings.AUTH_JWKS_URL = f"http://127.0.0.1:{server.server_port}/auth/jwks.json"
+    settings.AUTH_JWKS_URL = f"http://127.0.0.1:{server.server_port}/.well-known/jwks.json"
     settings.AUTH_JWT_AUDIENCE = None
     jwks_client.cache_clear()
     yield hits
@@ -77,11 +78,11 @@ def client_for(token):
 def test_owner_crud_and_jwks_cache(token, issuer):
     owner = str(uuid4())
     client = client_for(token(user_id=owner))
-    created = client.post("/api/tasks/", {"title": "First task", "owner_id": str(uuid4())})
+    created = client.post("/api/v1/tasks/", {"title": "First task", "owner_id": str(uuid4())})
     assert created.status_code == 201
     assert created.data["owner_id"] == owner
-    url = f"/api/tasks/{created.data['id']}/"
-    assert client.get("/api/tasks/").data["count"] == 1
+    url = f"/api/v1/tasks/{created.data['id']}/"
+    assert client.get("/api/v1/tasks/").data["count"] == 1
     assert client.get(url).status_code == 200
     assert client.patch(url, {"completed": True}).data["completed"] is True
     assert client.delete(url).status_code == 204
@@ -91,10 +92,10 @@ def test_owner_crud_and_jwks_cache(token, issuer):
 
 def test_other_user_cannot_read_update_delete(token):
     alice = client_for(token())
-    created = alice.post("/api/tasks/", {"title": "Private"})
-    url = f"/api/tasks/{created.data['id']}/"
+    created = alice.post("/api/v1/tasks/", {"title": "Private"})
+    url = f"/api/v1/tasks/{created.data['id']}/"
     bob = client_for(token())
-    assert bob.get("/api/tasks/").data["count"] == 0
+    assert bob.get("/api/v1/tasks/").data["count"] == 0
     assert bob.get(url).status_code == 404
     assert bob.patch(url, {"title": "Stolen"}).status_code == 404
     assert bob.delete(url).status_code == 404
@@ -113,13 +114,13 @@ def test_other_user_cannot_read_update_delete(token):
     ],
 )
 def test_invalid_claims(token, claims):
-    response = client_for(token(**claims)).get("/api/tasks/")
+    response = client_for(token(**claims)).get("/api/v1/tasks/")
     assert response.status_code == 401
     assert response["WWW-Authenticate"] == "Bearer"
 
 
 def test_no_token():
-    assert APIClient().get("/api/tasks/").status_code == 401
+    assert APIClient().get("/api/v1/tasks/").status_code == 401
 
 
 def test_wrong_signature(token):
@@ -131,21 +132,21 @@ def test_wrong_signature(token):
         algorithm="RS256",
         headers={"kid": "test-key"},
     )
-    assert client_for(forged).get("/api/tasks/").status_code == 401
+    assert client_for(forged).get("/api/v1/tasks/").status_code == 401
 
 
 @pytest.mark.parametrize("kid", ["unknown", ""])
 def test_wrong_key_id(keys, token, kid):
     claims = jwt.decode(token(), options={"verify_signature": False})
     raw = jwt.encode(claims, keys, algorithm="RS256", headers={"kid": kid})
-    assert client_for(raw).get("/api/tasks/").status_code == 401
+    assert client_for(raw).get("/api/v1/tasks/").status_code == 401
 
 
 def test_audience(token):
     with override_settings(AUTH_JWT_AUDIENCE="tasks-service"):
-        assert client_for(token(aud="tasks-service")).get("/api/tasks/").status_code == 200
-        assert client_for(token(aud="other")).get("/api/tasks/").status_code == 401
-        assert client_for(token()).get("/api/tasks/").status_code == 401
+        assert client_for(token(aud="tasks-service")).get("/api/v1/tasks/").status_code == 200
+        assert client_for(token(aud="other")).get("/api/v1/tasks/").status_code == 401
+        assert client_for(token()).get("/api/v1/tasks/").status_code == 401
 
 
 def test_unavailable_jwks(token, monkeypatch):
@@ -153,7 +154,7 @@ def test_unavailable_jwks(token, monkeypatch):
         raise jwt.PyJWKClientConnectionError("unavailable")
 
     monkeypatch.setattr(jwt.PyJWKClient, "fetch_data", fail)
-    assert client_for(token()).get("/api/tasks/").status_code == 503
+    assert client_for(token()).get("/api/v1/tasks/").status_code == 503
 
 
 def test_wrong_algorithm(issuer):
@@ -163,5 +164,5 @@ def test_wrong_algorithm(issuer):
         algorithm="HS256",
         headers={"kid": "test-key"},
     )
-    assert client_for(raw).get("/api/tasks/").status_code == 401
+    assert client_for(raw).get("/api/v1/tasks/").status_code == 401
     assert issuer == []

@@ -1,9 +1,14 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 permissions:
   contents: read
 jobs:
   checks:
+    name: Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -11,3 +16,39 @@ jobs:
       - run: cp .env.example .env
       - run: uv sync --locked
       - run: make check
+
+  integration:
+    name: HTTP integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out current service
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: tasks
+      - name: Check out companion service
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 9ZonDG6/Django-auth-service
+          path: auth
+      - name: Use matching companion branch when available
+        working-directory: auth
+        env:
+          PAIR_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          if git ls-remote --exit-code --heads origin "refs/heads/$PAIR_BRANCH" >/dev/null; then
+            git fetch origin "refs/heads/$PAIR_BRANCH"
+            git checkout --detach FETCH_HEAD
+          fi
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+      - name: Install both services
+        run: |
+          cp auth/.env.example auth/.env
+          cp tasks/.env.example tasks/.env
+          uv sync --locked --project auth
+          uv sync --locked --project tasks
+      - name: Test real HTTP interaction
+        working-directory: tasks
+        env:
+          AUTH_SERVICE_DIR: ${{ github.workspace }}/auth
+        run: uv run pytest tests/test_e2e.py tests/test_auth_contract.py -q
