@@ -16,16 +16,16 @@ uv run python manage.py migrate
 make server
 ```
 
-API будет доступен по адресу http://127.0.0.1:8001/api/tasks/.
+API будет доступен по адресу http://localhost:8001/api/v1/tasks/.
 Оба приложения запускаются отдельно, используют отдельные базы и окружения.
 
 ## Первый запрос
 
-Зарегистрируй пользователя через `/users/register/` сервиса авторизации или
+Зарегистрируй пользователя через `/api/v1/users/register/` сервиса авторизации или
 используй существующего. Получи токен:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/auth/login/ \
+curl -X POST http://localhost:8000/api/v1/auth/login/ \
   -H 'Content-Type: application/json' \
   -d '{"username": "alice", "password": "Example-Pass-92!"}'
 ```
@@ -33,12 +33,12 @@ curl -X POST http://127.0.0.1:8000/auth/login/ \
 Скопируй поле `access` из ответа и создай задачу:
 
 ```bash
-curl -X POST http://127.0.0.1:8001/api/tasks/ \
+curl -X POST http://localhost:8001/api/v1/tasks/ \
   -H 'Authorization: Bearer <access-token>' \
   -H 'Content-Type: application/json' \
   -d '{"title": "Проверить два сервиса", "description": "Вход через общий auth"}'
 
-curl http://127.0.0.1:8001/api/tasks/ \
+curl http://localhost:8001/api/v1/tasks/ \
   -H 'Authorization: Bearer <access-token>'
 ```
 
@@ -49,11 +49,11 @@ curl http://127.0.0.1:8001/api/tasks/ \
 
 | Метод | Адрес | Действие |
 | --- | --- | --- |
-| GET | `/api/tasks/` | Список своих задач |
-| POST | `/api/tasks/` | Создание задачи |
-| GET | `/api/tasks/<uuid>/` | Просмотр задачи |
-| PATCH / PUT | `/api/tasks/<uuid>/` | Обновление задачи |
-| DELETE | `/api/tasks/<uuid>/` | Удаление задачи |
+| GET | `/api/v1/tasks/` | Список своих задач |
+| POST | `/api/v1/tasks/` | Создание задачи |
+| GET | `/api/v1/tasks/<uuid>/` | Просмотр задачи |
+| PATCH / PUT | `/api/v1/tasks/<uuid>/` | Обновление задачи |
+| DELETE | `/api/v1/tasks/<uuid>/` | Удаление задачи |
 
 Редактируются `title` (до 200 символов), `description` и `completed`.
 `id`, `owner_id`, `created_at` и `updated_at` заполняет сервер. Переданный клиентом
@@ -80,7 +80,7 @@ JWKS кэшируется в каждом процессе на 5 минут. Т
 
 | Переменная | Значение по умолчанию / назначение |
 | --- | --- |
-| `AUTH_JWKS_URL` | `http://127.0.0.1:8000/auth/jwks.json` |
+| `AUTH_JWKS_URL` | `http://localhost:8000/.well-known/jwks.json` |
 | `AUTH_JWT_ISSUER` | `django-template-auth`, должен совпадать с `JWT_ISSUER` в auth |
 | `AUTH_JWT_AUDIENCE` | Пустое; ожидаемое назначение токена при включённом audience |
 | `DATABASE_URL` | SQLite локально; для PostgreSQL — `postgres://user:password@host:5432/tasks` |
@@ -119,3 +119,33 @@ AUTH_SERVICE_DIR=/path/to/Django-auth-service uv run pytest tests/test_auth_cont
 обновление через Django test client и проверяет полученные токены в tasks.
 В этом тесте транспорт JWKS подменён ответом настоящего auth-эндпоинта;
 HTTP-загрузка и кэш отдельно проверяются остальными тестами.
+
+
+## Общие соглашения сервисов
+
+API обоих проектов использует префикс `/api/v1/` и завершающий `/`.
+Публичные ключи auth доступны по `/.well-known/jwks.json` независимо от версии API.
+Документация auth находится на `/api/docs/`, `/api/redoc/` и `/api/schema/`,
+админка — на `/admin/`. Старые адреса `/auth/`, `/users/`, `/backend/` и
+`/api/tasks/` заменены; клиенты должны перейти на новые пути.
+
+Приложения находятся в `apps/`, настройки разделены по назначению в
+`config/settings/`. Тесты приложения лежат рядом с ним, межсервисные тесты —
+в `tests/` репозитория задач. Отдельная таблица пользователей в tasks не создаётся.
+
+Полная проверка взаимодействия запускается из проекта задач:
+
+```bash
+AUTH_SERVICE_DIR=/path/to/Django-auth-service uv run pytest tests/test_e2e.py -q
+```
+
+Тест запускает оба приложения по HTTP на свободных локальных портах, с отдельными
+временными SQLite-базами и новой парой RSA-ключей. Проверяет регистрацию, вход,
+получение JWKS, доступ к своим задачам, запрет доступа к чужим, обновление и отзыв
+refresh. Рабочие базы и ключи не используются. У обоих проектов должны быть
+установлены зависимости в `.venv`.
+
+В GitHub Actions обоих репозиториев это отдельное задание `HTTP integration`.
+Для согласованных изменений используется одноимённая ветка второго проекта,
+если она существует; иначе берётся его основная ветка. Это проверка совместимости
+двух текущих версий, а не фиксация версии зависимости для production.

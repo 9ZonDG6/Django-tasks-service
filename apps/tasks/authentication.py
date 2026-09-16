@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Any
 from uuid import UUID
 
 import jwt
 from django.conf import settings
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 from rest_framework.exceptions import APIException, AuthenticationFailed
+from rest_framework.request import Request
 
 
 class IdentityServiceUnavailable(APIException):
@@ -27,10 +29,10 @@ def jwks_client(url: str) -> jwt.PyJWKClient:
 
 
 class RemoteJWTAuthentication(BaseAuthentication):
-    def authenticate_header(self, request):
+    def authenticate_header(self, request: Request) -> str:
         return "Bearer"
 
-    def authenticate(self, request):
+    def authenticate(self, request: Request) -> tuple[Principal, dict[str, Any]] | None:
         header = get_authorization_header(request).split()
         if not header:
             return None
